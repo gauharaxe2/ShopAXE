@@ -11,7 +11,9 @@ export const products = pgTable('products', {
   rating: doublePrecision('rating').default(5.0),
   reviewCount: integer('review_count').default(0),
   image: text('image').notNull(),
+  secondaryImage: text('secondary_image'),
   description: text('description').notNull(),
+  details: jsonb('details').$type<string[]>().default([]),
   badge: text('badge'),
   isNew: boolean('is_new').default(false),
   isBestseller: boolean('is_bestseller').default(false),
@@ -88,6 +90,8 @@ export const storeSettings = pgTable('store_settings', {
   freeShippingThreshold: doublePrecision('free_shipping_threshold').default(150),
   themeTemplate: text('theme_template').default('midnight-cyber'),
   paymentGateway: jsonb('payment_gateway'),
+  sellerPhone2FA: jsonb('seller_phone_2fa'),
+  pakistanPayments: jsonb('pakistan_payments'),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 

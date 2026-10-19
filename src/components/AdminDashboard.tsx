@@ -148,6 +148,7 @@ import {
   createServerSecurityLog,
   fetchServerStoreSettings,
   updateServerStoreSettings,
+  fetchServerProducts,
 } from '../lib/productsApi';
 import { ImageUploadInput } from './seller/ImageUploadInput';
 import { ProductListingFormModal } from './seller/ProductListingFormModal';
@@ -167,6 +168,9 @@ interface AdminDashboardProps {
   securityLogs?: SecurityLog[];
   customers?: CustomerRecord[];
   tickets?: SupportTicket[];
+  storeSettings?: StoreSettings;
+  onUpdateStoreSettings?: (settings: StoreSettings) => void;
+  onRefreshProducts?: (products: Product[]) => void;
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
   onUpdateProductStock?: (productId: string, newStock: number) => void;
@@ -182,6 +186,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   securityLogs: propLogs,
   customers: propCustomers,
   tickets: propTickets,
+  storeSettings: propStoreSettings,
+  onUpdateStoreSettings,
+  onRefreshProducts,
   onAddProduct,
   onUpdateProduct,
   onUpdateProductStock,
@@ -215,12 +222,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   React.useEffect(() => { if (propLogs) setSecurityLogs(propLogs); }, [propLogs]);
   React.useEffect(() => { if (propCustomers) setCustomers(propCustomers); }, [propCustomers]);
   React.useEffect(() => { if (propTickets) setTickets(propTickets); }, [propTickets]);
+  React.useEffect(() => { if (propStoreSettings) setStoreSettings(propStoreSettings); }, [propStoreSettings]);
 
   // Real-time synchronization for Admin data from PostgreSQL database & Firestore
   React.useEffect(() => {
     if (!isOpen) return;
 
     // 1. Fetch immediately from PostgreSQL Relational Database REST backend
+    fetchServerProducts().then((serverProds) => {
+      if (serverProds && serverProds.length > 0 && onRefreshProducts) {
+        onRefreshProducts(serverProds);
+      }
+    }).catch(() => {});
+
     fetchServerOrders().then((serverOrders) => {
       if (serverOrders && serverOrders.length > 0) setOrders(serverOrders);
     }).catch(() => {});
@@ -592,11 +606,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Add Product Handler (Delegated to detailed ProductListingFormModal)
-  const handleSaveNewProduct = (created: Product) => {
-    onAddProduct(created);
-    upsertProductInDb(created).catch((err) => console.warn('Firestore product add sync:', err));
-    createServerProduct(created).catch((err) => console.warn('REST product add sync:', err));
+  const handleSaveNewProduct = async (created: Product) => {
     setIsAddProductOpen(false);
+    onAddProduct(created);
+    try {
+      await Promise.allSettled([
+        createServerProduct(created),
+        upsertProductInDb(created),
+      ]);
+      const fresh = await fetchServerProducts();
+      if (fresh && fresh.length > 0 && onRefreshProducts) {
+        onRefreshProducts(fresh);
+      }
+    } catch (err) {
+      console.warn('Error syncing new product:', err);
+    }
     addSecurityLog(`Created & Listed New Product: ${created.name} (SKU: ${created.sku})`, 'Inventory', 'info');
   };
 
@@ -717,18 +741,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Edit Product Handler (Delegated to detailed ProductListingFormModal)
-  const handleSaveEditedProduct = (updated: Product) => {
-    onUpdateProduct(updated);
-    upsertProductInDb(updated).catch((err) => console.warn('Firestore product update sync:', err));
-    updateServerProduct(updated).catch((err) => console.warn('REST product update sync:', err));
-    addSecurityLog(`Updated Product Details for ${updated.name} ($${updated.price})`, 'Inventory', 'info');
+  const handleSaveEditedProduct = async (updated: Product) => {
     setEditingProduct(null);
+    onUpdateProduct(updated);
+    try {
+      await Promise.allSettled([
+        updateServerProduct(updated),
+        upsertProductInDb(updated),
+      ]);
+      const fresh = await fetchServerProducts();
+      if (fresh && fresh.length > 0 && onRefreshProducts) {
+        onRefreshProducts(fresh);
+      }
+    } catch (err) {
+      console.warn('Error syncing updated product:', err);
+    }
+    addSecurityLog(`Updated Product Details for ${updated.name} ($${updated.price})`, 'Inventory', 'info');
   };
 
   const handleEditProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
     handleSaveEditedProduct(editingProduct);
+  };
+
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
+  const handleRefreshFromDb = async () => {
+    setIsRefreshingCatalog(true);
+    try {
+      const serverProds = await fetchServerProducts();
+      if (serverProds && serverProds.length > 0 && onRefreshProducts) {
+        onRefreshProducts(serverProds);
+      }
+      addSecurityLog(`Synchronized & Refreshed Catalog from PostgreSQL Database (${serverProds?.length || 0} Products)`, 'Inventory', 'info');
+    } catch (err) {
+      console.warn('Could not refresh products from DB:', err);
+    } finally {
+      setTimeout(() => setIsRefreshingCatalog(false), 500);
+    }
   };
 
   // Save & Sync Entire Catalog to PostgreSQL Database & Firestore
@@ -740,6 +790,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // 2. Batch upsert in PostgreSQL Relational Database
       await syncServerProducts(products);
+
+      // 3. Refetch to verify live database state
+      const fresh = await fetchServerProducts();
+      if (fresh && fresh.length > 0 && onRefreshProducts) {
+        onRefreshProducts(fresh);
+      }
 
       const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setLastCatalogSavedAt(timestamp);
@@ -1584,6 +1640,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span>Save Catalog to DB</span>
                         </>
                       )}
+                    </button>
+
+                    {/* Sync / Refresh from Database Button */}
+                    <button
+                      onClick={handleRefreshFromDb}
+                      disabled={isRefreshingCatalog}
+                      title="Fetch and synchronize latest products directly from PostgreSQL database"
+                      className="px-3.5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white font-bold text-xs rounded-2xl flex items-center gap-2 border border-neutral-700 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-amber-400 ${isRefreshingCatalog ? 'animate-spin' : ''}`} />
+                      <span>{isRefreshingCatalog ? 'Syncing...' : 'Sync from DB'}</span>
                     </button>
 
                     {/* Deleted Items / Archive Button */}
@@ -2972,6 +3039,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         try {
                           await updateServerStoreSettings(storeSettings);
                           await updateStoreSettingsInDb(storeSettings);
+                          if (onUpdateStoreSettings) {
+                            onUpdateStoreSettings(storeSettings);
+                          }
                           addSecurityLog('Updated Header Top Announcement Bar Line Content & Preferences', 'Settings', 'info');
                           setSettingsSavedSuccess(true);
                           setTimeout(() => setSettingsSavedSuccess(false), 3000);
@@ -3111,6 +3181,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         try {
                           await updateServerStoreSettings(storeSettings);
                           await updateStoreSettingsInDb(storeSettings);
+                          if (onUpdateStoreSettings) {
+                            onUpdateStoreSettings(storeSettings);
+                          }
                           addSecurityLog('Store Global Configuration & Payment Parameters Synchronized to Database', 'Settings', 'info');
                           setSettingsSavedSuccess(true);
                           setTimeout(() => setSettingsSavedSuccess(false), 3000);

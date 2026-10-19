@@ -164,7 +164,9 @@ export async function createDbProduct(data: Partial<Product>): Promise<Product> 
       rating: newProduct.rating,
       reviewCount: newProduct.reviewCount,
       image: newProduct.image,
+      secondaryImage: newProduct.secondaryImage ?? null,
       description: newProduct.description,
+      details: newProduct.details ?? [],
       badge: null,
       isNew: newProduct.isNew ?? false,
       isBestseller: newProduct.isBestseller ?? false,
@@ -187,7 +189,9 @@ export async function createDbProduct(data: Partial<Product>): Promise<Product> 
         rating: newProduct.rating,
         reviewCount: newProduct.reviewCount,
         image: newProduct.image,
+        secondaryImage: newProduct.secondaryImage ?? null,
         description: newProduct.description,
+        details: newProduct.details ?? [],
         isNew: newProduct.isNew ?? false,
         isBestseller: newProduct.isBestseller ?? false,
         stockCount: newProduct.stockCount,
@@ -235,7 +239,11 @@ export async function updateDbProduct(id: string, data: Partial<Product>): Promi
       originalPrice: data.originalPrice !== undefined ? Number(data.originalPrice) : existing.originalPrice,
       deliveryCharges,
       image: data.image !== undefined ? data.image : existing.image,
+      secondaryImage: data.secondaryImage !== undefined ? data.secondaryImage : (existing.secondaryImage ?? null),
       description: data.description !== undefined ? data.description : existing.description,
+      details: data.details !== undefined ? data.details : (existing.details ?? []),
+      isNew: data.isNew !== undefined ? Boolean(data.isNew) : existing.isNew,
+      isBestseller: data.isBestseller !== undefined ? Boolean(data.isBestseller) : existing.isBestseller,
       stockCount,
       inStock,
       sku: data.sku !== undefined ? data.sku : existing.sku,
@@ -629,7 +637,8 @@ export async function getDbStoreSettings(): Promise<StoreSettings> {
         announcementBadgeText: pg.announcementBadgeText ?? (r as any).announcementBadgeText ?? DEFAULT_STORE_SETTINGS.announcementBadgeText,
         announcementEnabled: pg.announcementEnabled !== undefined ? pg.announcementEnabled : ((r as any).announcementEnabled !== undefined ? (r as any).announcementEnabled : DEFAULT_STORE_SETTINGS.announcementEnabled),
         paymentGateway: pg.gatewayName ? pg : DEFAULT_STORE_SETTINGS.paymentGateway,
-        sellerPhone2FA: (r as any).sellerPhone2FA || pg.sellerPhone2FA || DEFAULT_STORE_SETTINGS.sellerPhone2FA,
+        sellerPhone2FA: (r as any).sellerPhone2FA || (r as any).seller_phone_2fa || pg.sellerPhone2FA || DEFAULT_STORE_SETTINGS.sellerPhone2FA,
+        pakistanPayments: (r as any).pakistanPayments || (r as any).pakistan_payments || pg.pakistanPayments || DEFAULT_STORE_SETTINGS.pakistanPayments,
       };
     }
   } catch (err) {
@@ -652,6 +661,8 @@ export async function updateDbStoreSettings(settings: Partial<StoreSettings>): P
       announcementSubtext: settings.announcementSubtext !== undefined ? settings.announcementSubtext : current.announcementSubtext,
       announcementBadgeText: settings.announcementBadgeText !== undefined ? settings.announcementBadgeText : current.announcementBadgeText,
       announcementEnabled: settings.announcementEnabled !== undefined ? settings.announcementEnabled : current.announcementEnabled,
+      sellerPhone2FA: settings.sellerPhone2FA !== undefined ? settings.sellerPhone2FA : current.sellerPhone2FA,
+      pakistanPayments: settings.pakistanPayments !== undefined ? settings.pakistanPayments : current.pakistanPayments,
     } as any,
   };
 
@@ -663,6 +674,8 @@ export async function updateDbStoreSettings(settings: Partial<StoreSettings>): P
       taxRatePercent: updated.taxRatePercent,
       freeShippingThreshold: updated.freeShippingThreshold,
       paymentGateway: updated.paymentGateway,
+      sellerPhone2FA: updated.sellerPhone2FA as any,
+      pakistanPayments: updated.pakistanPayments as any,
     }).onConflictDoUpdate({
       target: storeSettings.id,
       set: {
@@ -671,6 +684,8 @@ export async function updateDbStoreSettings(settings: Partial<StoreSettings>): P
         taxRatePercent: updated.taxRatePercent,
         freeShippingThreshold: updated.freeShippingThreshold,
         paymentGateway: updated.paymentGateway,
+        sellerPhone2FA: updated.sellerPhone2FA as any,
+        pakistanPayments: updated.pakistanPayments as any,
         updatedAt: new Date(),
       },
     });
@@ -680,6 +695,7 @@ export async function updateDbStoreSettings(settings: Partial<StoreSettings>): P
 
   return updated;
 }
+
 
 // ================= SELLER WALLET & WITHDRAWALS ================= //
 

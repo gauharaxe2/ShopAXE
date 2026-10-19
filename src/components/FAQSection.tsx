@@ -350,7 +350,10 @@ export const FAQSection: React.FC<FAQSectionProps> = ({ onOpenTracking }) => {
 
                           {/* Key Highlights Bullet points */}
                           {faq.highlights && faq.highlights.length > 0 && (
-                            <div className="bg-stone-100/80 dark:bg-neutral-850/80 p-3.5 sm:p-4 rounded-xl border border-stone-200 dark:border-neutral-800 space-y-2">
+                            <div 
+                              style={{ backgroundColor: '#ffffff' }}
+                              className="bg-white p-3.5 sm:p-4 rounded-xl border border-stone-200 dark:border-neutral-800 space-y-2"
+                            >
                               {faq.highlights.map((highlight, idx) => (
                                 <div key={idx} className="flex items-start gap-2 text-xs font-medium text-neutral-800 dark:text-neutral-200">
                                   <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />

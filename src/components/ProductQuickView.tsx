@@ -27,7 +27,7 @@ import { CustomerReviews } from './CustomerReviews';
 import { SocialShareButton } from './SocialShareButton';
 
 interface ProductQuickViewProps {
-  product: Product | null;
+  product: Product;
   onClose: () => void;
   isWishlisted: boolean;
   onToggleWishlist: (product: Product) => void;
@@ -71,8 +71,6 @@ export const ProductQuickView: React.FC<ProductQuickViewProps> = ({
   onUpdateProductRating,
   onAddToast,
 }) => {
-  if (!product) return null;
-
   // Extract up to 5 images
   const galleryImages = useMemo(() => {
     if (Array.isArray(product.images) && product.images.length > 0) {

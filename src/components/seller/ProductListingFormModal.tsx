@@ -576,12 +576,9 @@ export const ProductListingFormModal: React.FC<ProductListingFormModalProps> = (
     if (!name.trim()) errors.push('Product title is required.');
     if (!price || price <= 0) errors.push('Valid retail price is required.');
     const primaryImg = galleryImages[0]?.trim() || image.trim();
-    if (!primaryImg) {
-      errors.push('Primary hero image (Slot 1) is compulsory and required.');
+    if (!primaryImg && galleryImages.filter(Boolean).length === 0) {
+      errors.push('Primary hero image (Slot 1) is required.');
     }
-    if (!sku.trim()) errors.push('Product SKU is required.');
-    if (colors.length === 0) errors.push('At least one color variant is required.');
-    if (!description.trim()) errors.push('Product description is required.');
 
     setValidationErrors(errors);
     return errors.length === 0;
@@ -590,19 +587,28 @@ export const ProductListingFormModal: React.FC<ProductListingFormModalProps> = (
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) {
-      setActiveStep('basic');
+      if (!name.trim()) {
+        setActiveStep('basic');
+      } else if (!price || price <= 0) {
+        setActiveStep('pricing');
+      }
       return;
     }
 
     const cleanGallery = galleryImages.map((img) => img.trim()).filter(Boolean);
-    const primaryImg = cleanGallery[0] || image.trim();
+    const primaryImg = cleanGallery[0] || image.trim() || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=800';
     const secondaryImg = cleanGallery[1] || secondaryImage.trim() || undefined;
+
+    const safeColors = colors.length > 0 ? colors : [
+      { name: 'Onyx Black', hex: '#18181b' },
+      { name: 'Off-White', hex: '#fafaf9' },
+    ];
 
     const finalProduct: Product = {
       id: initialProduct ? initialProduct.id : `prod-${Date.now()}`,
       name: name.trim(),
-      category,
-      price: Number(price),
+      category: category || 'Apparel',
+      price: Number(price) || 99,
       originalPrice: originalPrice && originalPrice > price ? Number(originalPrice) : undefined,
       deliveryCharges: deliveryCharges !== undefined && deliveryCharges > 0 ? Number(deliveryCharges) : 0,
       rating: initialProduct ? initialProduct.rating : 5.0,
@@ -611,15 +617,15 @@ export const ProductListingFormModal: React.FC<ProductListingFormModalProps> = (
       secondaryImage: secondaryImg,
       images: cleanGallery.length > 0 ? cleanGallery : [primaryImg],
       videoUrl: videoUrl.trim() || undefined,
-      colors,
-      sizes: sizes.length > 0 ? sizes : undefined,
-      description: description.trim(),
+      colors: safeColors,
+      sizes: sizes.length > 0 ? sizes : ['S', 'M', 'L', 'XL'],
+      description: description.trim() || 'Premium handcrafted minimalist essential designed for longevity.',
       details: details.length > 0 ? details : ['Handcrafted premium essential.', 'Dry clean or cold wash.'],
-      isNew,
-      isBestseller,
+      isNew: isNew ?? true,
+      isBestseller: isBestseller ?? false,
       inStock: stockCount > 0 && inStock,
-      stockCount: Number(stockCount),
-      sku: sku.trim().toUpperCase(),
+      stockCount: Number(stockCount ?? 10),
+      sku: (sku.trim() || generateSku(category)).toUpperCase(),
     };
 
     onSave(finalProduct);

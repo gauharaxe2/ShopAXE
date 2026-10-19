@@ -110,8 +110,17 @@ export default function App() {
 
       // Subscribe to live products stream from Firestore
       unsubscribeProducts = subscribeProducts((fetchedProducts) => {
-        if (fetchedProducts.length > 0) {
-          setProducts(fetchedProducts);
+        if (fetchedProducts && fetchedProducts.length > 0) {
+          setProducts((current) => {
+            const map = new Map<string, Product>();
+            current.forEach((p) => map.set(p.id, p));
+            fetchedProducts.forEach((p) => map.set(p.id, p));
+            const merged = Array.from(map.values());
+            try {
+              localStorage.setItem('aura_products', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
         }
         setIsProductsLoading(false);
       });
@@ -119,11 +128,23 @@ export default function App() {
       // Also fetch from Backend Server API (PostgreSQL database)
       fetchServerProducts()
         .then((serverProds) => {
-          if (serverProds.length > 0) {
-            setProducts((current) => (current.length === 0 ? serverProds : current));
+          if (serverProds && serverProds.length > 0) {
+            setProducts((current) => {
+              const map = new Map<string, Product>();
+              current.forEach((p) => map.set(p.id, p));
+              serverProds.forEach((p) => map.set(p.id, p));
+              const merged = Array.from(map.values());
+              try {
+                localStorage.setItem('aura_products', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
+          setIsProductsLoading(false);
         })
-        .catch(() => {});
+        .catch(() => {
+          setIsProductsLoading(false);
+        });
 
       fetchServerOrders()
         .then((serverOrders) => {
@@ -571,7 +592,13 @@ export default function App() {
 
   // Product Database Mutations with Dual Persistence
   const handleAddProduct = (product: Product) => {
-    setProducts((prev) => [product, ...prev]);
+    setProducts((prev) => {
+      const next = [product, ...prev.filter((p) => p.id !== product.id)];
+      try {
+        localStorage.setItem('aura_products', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     upsertProductInDb(product).catch((err) => console.warn('Firestore product add:', err));
     createServerProduct(product).catch((err) => console.warn('REST product add:', err));
     addToast({
@@ -583,7 +610,13 @@ export default function App() {
   };
 
   const handleUpdateProduct = (product: Product) => {
-    setProducts((prev) => prev.map((p) => (p.id === product.id ? product : p)));
+    setProducts((prev) => {
+      const next = prev.map((p) => (p.id === product.id ? product : p));
+      try {
+        localStorage.setItem('aura_products', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     upsertProductInDb(product).catch((err) => console.warn('Firestore product update:', err));
     updateServerProduct(product).catch((err) => console.warn('REST product update:', err));
     addToast({
@@ -595,19 +628,29 @@ export default function App() {
 
   const handleUpdateProductStock = (productId: string, newStock: number) => {
     const safeStock = Math.max(0, Math.floor(newStock));
-    setProducts((prev) =>
-      prev.map((p) =>
+    setProducts((prev) => {
+      const next = prev.map((p) =>
         p.id === productId
           ? { ...p, stockCount: safeStock, inStock: safeStock > 0 }
           : p
-      )
-    );
+      );
+      try {
+        localStorage.setItem('aura_products', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     updateProductStockInDb(productId, safeStock).catch((err) => console.warn('Firestore stock sync:', err));
     updateServerProductStock(productId, safeStock).catch((err) => console.warn('REST stock sync:', err));
   };
 
   const handleDeleteProduct = (productId: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+    setProducts((prev) => {
+      const next = prev.filter((p) => p.id !== productId);
+      try {
+        localStorage.setItem('aura_products', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     deleteProductInDb(productId).catch((err) => console.warn('Firestore product delete:', err));
     deleteServerProduct(productId).catch((err) => console.warn('REST product delete:', err));
     addToast({
@@ -626,6 +669,9 @@ export default function App() {
           isOpen={true}
           onClose={navigateToStorefront}
           products={products}
+          storeSettings={storeSettings}
+          onUpdateStoreSettings={(settings) => setStoreSettings(settings)}
+          onRefreshProducts={(fresh) => setProducts(fresh)}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onUpdateProductStock={handleUpdateProductStock}
@@ -742,27 +788,29 @@ export default function App() {
         onOpenProduct={handleOpenProduct}
       />
 
-      <ProductQuickView
-        product={quickViewProduct}
-        onClose={() => setQuickViewProduct(null)}
-        isWishlisted={quickViewProduct ? wishlistIds.has(quickViewProduct.id) : false}
-        onToggleWishlist={handleToggleWishlist}
-        onAddToCart={handleAddToCart}
-        onBuyNow={handleBuyNow}
-        onUpdateProductRating={(pId, newRating, newCount) => {
-          setProducts((prev) =>
-            prev.map((p) =>
-              p.id === pId ? { ...p, rating: newRating, reviewCount: newCount } : p
-            )
-          );
-          if (quickViewProduct && quickViewProduct.id === pId) {
-            setQuickViewProduct((prev) =>
-              prev ? { ...prev, rating: newRating, reviewCount: newCount } : null
+      {quickViewProduct && (
+        <ProductQuickView
+          product={quickViewProduct}
+          onClose={() => setQuickViewProduct(null)}
+          isWishlisted={wishlistIds.has(quickViewProduct.id)}
+          onToggleWishlist={handleToggleWishlist}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+          onUpdateProductRating={(pId, newRating, newCount) => {
+            setProducts((prev) =>
+              prev.map((p) =>
+                p.id === pId ? { ...p, rating: newRating, reviewCount: newCount } : p
+              )
             );
-          }
-        }}
-        onAddToast={addToast}
-      />
+            if (quickViewProduct && quickViewProduct.id === pId) {
+              setQuickViewProduct((prev) =>
+                prev ? { ...prev, rating: newRating, reviewCount: newCount } : null
+              );
+            }
+          }}
+          onAddToast={addToast}
+        />
+      )}
 
       <CheckoutModal
         isOpen={isCheckoutOpen}
