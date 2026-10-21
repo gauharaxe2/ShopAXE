@@ -34,6 +34,8 @@ const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' 
   </svg>
 );
 
+import { StudioLegalPageId } from './studio/studioTypes';
+
 interface SideMenuProps {
   isOpen: boolean;
   onClose: () => void;
@@ -48,6 +50,7 @@ interface SideMenuProps {
   onToggleDarkMode: () => void;
   onSelectQuickFilter?: (filterType: string) => void;
   onOpenTracking?: () => void;
+  onNavigateToPage?: (pageId: StudioLegalPageId) => void;
 }
 
 export const SideMenu: React.FC<SideMenuProps> = ({
@@ -63,6 +66,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({
   isDarkMode,
   onToggleDarkMode,
   onOpenTracking,
+  onNavigateToPage,
 }) => {
   const [currency, setCurrency] = useState<'USD' | 'EUR' | 'GBP' | 'JPY'>('USD');
 
@@ -481,11 +485,39 @@ export const SideMenu: React.FC<SideMenuProps> = ({
               {/* Side Menu Footer */}
               <div className="p-6 bg-white dark:bg-neutral-900 border-t border-stone-200 dark:border-neutral-800 text-center space-y-2">
                 <div className="flex items-center justify-center gap-4 text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                  <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-neutral-900 dark:hover:text-white">Privacy Policy</a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onNavigateToPage?.('privacy');
+                    }}
+                    className="hover:text-neutral-900 dark:hover:text-white cursor-pointer"
+                  >
+                    Privacy Policy
+                  </button>
                   <span>•</span>
-                  <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-neutral-900 dark:hover:text-white">Terms of Service</a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onNavigateToPage?.('terms');
+                    }}
+                    className="hover:text-neutral-900 dark:hover:text-white cursor-pointer"
+                  >
+                    Terms of Service
+                  </button>
                   <span>•</span>
-                  <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-neutral-900 dark:hover:text-white">FAQ</a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      const el = document.getElementById('faq-section');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="hover:text-neutral-900 dark:hover:text-white cursor-pointer"
+                  >
+                    FAQ
+                  </button>
                 </div>
                 <p className="text-[10px] text-neutral-400">
                   &copy; {new Date().getFullYear()} Shopaxe Inc. All rights reserved.

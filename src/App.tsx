@@ -19,6 +19,8 @@ import { ReceiptModal } from './components/ReceiptModal';
 import { StoreReviewsSection } from './components/StoreReviewsSection';
 import { FAQSection } from './components/FAQSection';
 import { WhatsAppButton } from './components/WhatsAppButton';
+import { StudioHub } from './components/studio/StudioHub';
+import { StudioLegalPageId } from './components/studio/studioTypes';
 import { 
   subscribeProducts, 
   subscribeOrders, 
@@ -55,9 +57,33 @@ function checkIsSellerAddress(): boolean {
   return path === '/seller' || path.startsWith('/seller/');
 }
 
+// Helper to check if URL specifies a studio or legal page (?page=... or #...)
+function checkInitialStudioPage(): StudioLegalPageId | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page') || params.get('studio') || params.get('view');
+    const validPages: StudioLegalPageId[] = [
+      'about', 'sustainability', 'materials', 'journal', 'careers',
+      'privacy', 'terms', 'accessibility', 'cookies'
+    ];
+    if (page && validPages.includes(page as StudioLegalPageId)) {
+      return page as StudioLegalPageId;
+    }
+    const hash = window.location.hash.replace(/^#/, '').toLowerCase();
+    if (hash && validPages.includes(hash as StudioLegalPageId)) {
+      return hash as StudioLegalPageId;
+    }
+  } catch {}
+  return null;
+}
+
 export default function App() {
   // Dedicated Address Route for Seller Dashboard
   const [isSellerAddress, setIsSellerAddress] = useState<boolean>(checkIsSellerAddress);
+
+  // Active Studio / Legal Page Route
+  const [activeStudioPage, setActiveStudioPage] = useState<StudioLegalPageId | null>(checkInitialStudioPage);
 
   // Products State (Synchronized with Firestore Database & Backend REST API)
   const [products, setProducts] = useState<Product[]>(() => {
@@ -74,10 +100,11 @@ export default function App() {
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(DEFAULT_STORE_SETTINGS);
   const [isProductsLoading, setIsProductsLoading] = useState<boolean>(true);
 
-  // Handle URL Address Routing (/seller)
+  // Handle URL Address Routing (/seller, ?page=...)
   useEffect(() => {
     const handleUrlChange = () => {
       setIsSellerAddress(checkIsSellerAddress());
+      setActiveStudioPage(checkInitialStudioPage());
     };
 
     window.addEventListener('popstate', handleUrlChange);
@@ -92,6 +119,27 @@ export default function App() {
   const navigateToStorefront = useCallback(() => {
     window.history.pushState(null, '', '/');
     setIsSellerAddress(false);
+    setActiveStudioPage(null);
+  }, []);
+
+  const handleNavigateToStudioPage = useCallback((pageId: StudioLegalPageId) => {
+    setActiveStudioPage(pageId);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', pageId);
+      window.history.pushState(null, '', url.toString());
+    } catch {}
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleBackToStore = useCallback(() => {
+    setActiveStudioPage(null);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('page');
+      window.history.pushState(null, '', url.toString());
+    } catch {}
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   // Initialize and subscribe to Firestore Database & Backend APIs
@@ -696,58 +744,82 @@ export default function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         selectedCategory={selectedCategory}
-        onCategorySelect={setSelectedCategory}
+        onCategorySelect={(cat) => {
+          if (activeStudioPage) handleBackToStore();
+          setSelectedCategory(cat);
+        }}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
         onOpenSideMenu={() => setIsSideMenuOpen(true)}
         onOpenTracking={() => handleOpenTracking()}
         storeSettings={storeSettings}
+        onNavigateHome={handleBackToStore}
       />
 
-      {/* Main Content Body */}
-      <main className="flex-1">
-        {/* Hero Banner */}
-        <HeroBanner
-          onExploreClick={handleExploreHeroClick}
-          onSelectCategory={(cat) => {
+      {/* Main Content Body: Either Studio / Legal Page or Storefront */}
+      {activeStudioPage ? (
+        <StudioHub
+          activePage={activeStudioPage}
+          onSelectPage={handleNavigateToStudioPage}
+          onBackToStore={handleBackToStore}
+          onNavigateToCategory={(cat) => {
+            handleBackToStore();
             setSelectedCategory(cat);
-            handleExploreHeroClick();
+            setTimeout(() => {
+              const el = document.getElementById('product-catalog');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
           }}
         />
+      ) : (
+        <main className="flex-1">
+          {/* Hero Banner */}
+          <HeroBanner
+            onExploreClick={handleExploreHeroClick}
+            onSelectCategory={(cat) => {
+              setSelectedCategory(cat);
+              handleExploreHeroClick();
+            }}
+          />
 
-        {/* Product Catalog Grid & Filters */}
-        <ProductGrid
-          products={products}
-          wishlistIds={wishlistIds}
-          onToggleWishlist={handleToggleWishlist}
-          onQuickView={handleOpenProduct}
-          onAddToCart={handleAddToCart}
-          onBuyNow={handleBuyNow}
-          onAddToast={addToast}
-          selectedCategory={selectedCategory}
-          onCategorySelect={setSelectedCategory}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          isLoading={isProductsLoading}
-        />
+          {/* Product Catalog Grid & Filters */}
+          <ProductGrid
+            products={products}
+            wishlistIds={wishlistIds}
+            onToggleWishlist={handleToggleWishlist}
+            onQuickView={handleOpenProduct}
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+            onAddToast={addToast}
+            selectedCategory={selectedCategory}
+            onCategorySelect={setSelectedCategory}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            isLoading={isProductsLoading}
+          />
 
-        {/* User Reviews & Verified Community Feedback Showcase */}
-        <StoreReviewsSection
-          products={products}
-          onQuickViewProduct={handleOpenProduct}
-          onAddToast={addToast}
-        />
+          {/* User Reviews & Verified Community Feedback Showcase */}
+          <StoreReviewsSection
+            products={products}
+            onQuickViewProduct={handleOpenProduct}
+            onAddToast={addToast}
+          />
 
-        {/* Customer FAQ & Shipping/Returns Policies Interactive Accordion */}
-        <FAQSection
-          onOpenTracking={() => handleOpenTracking()}
-        />
-      </main>
+          {/* Customer FAQ & Shipping/Returns Policies Interactive Accordion */}
+          <FAQSection
+            onOpenTracking={() => handleOpenTracking()}
+          />
+        </main>
+      )}
 
       {/* Footer */}
       <Footer 
-        onSelectCategory={setSelectedCategory} 
+        onSelectCategory={(cat) => {
+          if (activeStudioPage) handleBackToStore();
+          setSelectedCategory(cat);
+        }} 
         onOpenTracking={() => handleOpenTracking()}
+        onNavigateToPage={handleNavigateToStudioPage}
       />
 
       {/* Side Menu Navigation Drawer (Zero Seller Access) */}
@@ -756,7 +828,10 @@ export default function App() {
         onClose={() => setIsSideMenuOpen(false)}
         products={products}
         selectedCategory={selectedCategory}
-        onSelectCategory={setSelectedCategory}
+        onSelectCategory={(cat) => {
+          if (activeStudioPage) handleBackToStore();
+          setSelectedCategory(cat);
+        }}
         cartCount={totalCartCount}
         wishlistCount={wishlistIds.size}
         onOpenCart={() => setIsCartOpen(true)}
@@ -764,6 +839,7 @@ export default function App() {
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
         onOpenTracking={() => handleOpenTracking()}
+        onNavigateToPage={handleNavigateToStudioPage}
       />
 
       {/* Slide-over Drawers & Modals */}

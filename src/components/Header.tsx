@@ -34,6 +34,7 @@ interface HeaderProps {
   onOpenSideMenu: () => void;
   onOpenTracking?: () => void;
   storeSettings?: StoreSettings;
+  onNavigateHome?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,6 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSideMenu,
   onOpenTracking,
   storeSettings,
+  onNavigateHome,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -65,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const handleNavClick = (catId: string) => {
+    if (onNavigateHome) onNavigateHome();
     onCategorySelect(catId);
     setIsMobileMenuOpen(false);
     // Smooth scroll to product grid
@@ -139,7 +142,12 @@ export const Header: React.FC<HeaderProps> = ({
 
             <a 
               href="#" 
-              onClick={(e) => { e.preventDefault(); onCategorySelect('all'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              onClick={(e) => { 
+                e.preventDefault(); 
+                if (onNavigateHome) onNavigateHome(); 
+                onCategorySelect('all'); 
+                window.scrollTo({ top: 0, behavior: 'smooth' }); 
+              }}
               className="group focus:outline-none"
             >
               <BrandLogo size="md" />

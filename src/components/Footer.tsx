@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { ArrowRight, Check, Instagram, Twitter, ShieldCheck, Heart } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+import { StudioLegalPageId } from './studio/studioTypes';
 
 interface FooterProps {
   onSelectCategory: (category: string) => void;
   onOpenTracking?: () => void;
+  onNavigateToPage?: (pageId: StudioLegalPageId) => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onSelectCategory, onOpenTracking }) => {
+export const Footer: React.FC<FooterProps> = ({ onSelectCategory, onOpenTracking, onNavigateToPage }) => {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
@@ -160,28 +162,108 @@ export const Footer: React.FC<FooterProps> = ({ onSelectCategory, onOpenTracking
                   Tel: +92 315 7338694
                 </a>
               </li>
-              <li><a href="#" onClick={(e) => e.preventDefault()} className="hover:text-white transition-colors">Shipping &amp; Payoneer / Card Payments</a></li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('terms') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Shipping &amp; Payoneer / Card Payments
+                </button>
+              </li>
             </ul>
           </div>
 
           <div>
             <h4 className="font-bold text-white uppercase tracking-wider mb-4 text-[11px]">Our Studio</h4>
             <ul className="space-y-2.5 text-neutral-400">
-              <li><a href="#" className="hover:text-white transition-colors">About Shopaxe</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Sustainability Manifesto</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Material Transparency</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Design Journal</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('about') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  About Shopaxe
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('sustainability') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Sustainability Manifesto
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('materials') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Material Transparency
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('journal') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Design Journal
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('careers') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Careers
+                </button>
+              </li>
             </ul>
           </div>
 
           <div>
-            <h4 className="font-bold text-white uppercase tracking-wider mb-4 text-[11px]">Legal & Security</h4>
+            <h4 className="font-bold text-white uppercase tracking-wider mb-4 text-[11px]">Legal &amp; Security</h4>
             <ul className="space-y-2.5 text-neutral-400">
-              <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Accessibility Statement</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Cookie Preferences</a></li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('privacy') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Privacy Policy
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('terms') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Terms of Service
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('accessibility') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Accessibility Statement
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPage ? onNavigateToPage('cookies') : null}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Cookie Preferences
+                </button>
+              </li>
             </ul>
           </div>
         </div>
