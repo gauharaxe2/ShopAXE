@@ -647,8 +647,26 @@ export default function App() {
       } catch (e) {}
       return next;
     });
-    upsertProductInDb(product).catch((err) => console.warn('Firestore product add:', err));
-    createServerProduct(product).catch((err) => console.warn('REST product add:', err));
+
+    createServerProduct(product)
+      .then((serverProd) => {
+        const toSync = serverProd || product;
+        if (serverProd) {
+          setProducts((prev) => {
+            const next = prev.map((p) => (p.id === serverProd.id ? serverProd : p));
+            try {
+              localStorage.setItem('aura_products', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        }
+        upsertProductInDb(toSync).catch((err) => console.warn('Firestore product add:', err));
+      })
+      .catch((err) => {
+        console.warn('REST product add error, syncing to Firestore:', err);
+        upsertProductInDb(product).catch((e) => console.warn('Firestore product add:', e));
+      });
+
     addToast({
       title: 'Product Added to Catalog',
       message: `${product.name} is now live on the storefront.`,
@@ -665,8 +683,26 @@ export default function App() {
       } catch (e) {}
       return next;
     });
-    upsertProductInDb(product).catch((err) => console.warn('Firestore product update:', err));
-    updateServerProduct(product).catch((err) => console.warn('REST product update:', err));
+
+    updateServerProduct(product)
+      .then((serverProd) => {
+        const toSync = serverProd || product;
+        if (serverProd) {
+          setProducts((prev) => {
+            const next = prev.map((p) => (p.id === serverProd.id ? serverProd : p));
+            try {
+              localStorage.setItem('aura_products', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        }
+        upsertProductInDb(toSync).catch((err) => console.warn('Firestore product update:', err));
+      })
+      .catch((err) => {
+        console.warn('REST product update error, syncing to Firestore:', err);
+        upsertProductInDb(product).catch((e) => console.warn('Firestore product update:', e));
+      });
+
     addToast({
       title: 'Product Updated',
       message: `${product.name} details synchronized.`,

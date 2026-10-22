@@ -47,6 +47,7 @@ import {
   createDbWalletTransaction,
   recordCustomerOrderWalletCredit,
 } from './server/dbService';
+import { ensureUploadsDir, saveBase64Image, sanitizeProduct } from './server/fileStorage';
 
 dotenv.config();
 
@@ -57,6 +58,12 @@ async function startServer() {
   // JSON request body parser with generous limit for product image uploads
   app.use(express.json({ limit: '25mb' }));
   app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+  // Ensure and serve public/uploads directory statically for permanent product assets
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  ensureUploadsDir();
+  app.use('/uploads', express.static(uploadsDir));
+  app.use(express.static(path.join(process.cwd(), 'public')));
 
   // Seed initial products to PostgreSQL asynchronously
   seedInitialProductsIfEmpty().catch((err) => {
@@ -170,15 +177,19 @@ async function startServer() {
   });
 
   // API Routes: Image Upload
-  app.post('/api/upload', (req, res) => {
+  app.post('/api/upload', async (req, res) => {
     try {
       const { image, name } = req.body;
       if (!image) {
         return res.status(400).json({ success: false, error: 'No image data provided' });
       }
+      const savedUrl = await saveBase64Image(
+        image,
+        name ? String(name).toLowerCase().replace(/[^a-z0-9_-]/g, '_') : 'prod_image'
+      );
       res.json({
         success: true,
-        imageUrl: image,
+        imageUrl: savedUrl,
         name: name || 'Uploaded Product Asset',
         timestamp: Date.now(),
       });

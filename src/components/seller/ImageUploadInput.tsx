@@ -25,7 +25,51 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
   const [activeMode, setActiveMode] = useState<'upload' | 'url' | 'presets'>('upload');
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const compressImageClient = (file: File, maxDim = 1600, quality = 0.9): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const rawData = e.target?.result as string;
+        if (!rawData) return resolve('');
+
+        // If SVG or GIF, don't re-encode to preserve vector/animation
+        if (file.type.includes('svg') || file.type.includes('gif')) {
+          return resolve(rawData);
+        }
+
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(rawData);
+          ctx.drawImage(img, 0, 0, width, height);
+          const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const compressed = canvas.toDataURL(mime, quality);
+          resolve(compressed);
+        };
+        img.onerror = () => resolve(rawData);
+        img.src = rawData;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
 
   const processFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -34,23 +78,24 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
     }
 
     setIsProcessing(true);
+    setUploadSuccess(false);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = e.target?.result as string;
-        if (base64) {
-          // Attempt server upload for clean hosting, falls back to base64
-          const serverUrl = await uploadProductImageServer(base64, file.name);
-          onChange(serverUrl || base64);
-        }
+      // 1. Optimize & resize image on client to ensure fast network transit
+      const compressedBase64 = await compressImageClient(file);
+      if (!compressedBase64) {
         setIsProcessing(false);
-      };
-      reader.onerror = () => {
-        setIsProcessing(false);
-      };
-      reader.readAsDataURL(file);
+        return;
+      }
+
+      // 2. Upload to server to save permanent file in /public/uploads/
+      const serverUrl = await uploadProductImageServer(compressedBase64, file.name);
+      const finalUrl = serverUrl || compressedBase64;
+      onChange(finalUrl);
+      setUploadSuccess(true);
+      setTimeout(() => setUploadSuccess(false), 3000);
     } catch (err) {
-      console.warn('Error processing image:', err);
+      console.warn('Error processing image upload:', err);
+    } finally {
       setIsProcessing(false);
     }
   };

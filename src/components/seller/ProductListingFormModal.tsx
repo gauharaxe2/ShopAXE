@@ -36,6 +36,7 @@ import {
 import { Product, ProductColor, Category } from '../../types';
 import { ImageUploadInput } from './ImageUploadInput';
 import { getAllCategories, saveCustomCategory, CATEGORY_IMAGE_PRESETS } from '../../utils/categoryStorage';
+import { uploadProductImageServer } from '../../lib/productsApi';
 
 interface ProductListingFormModalProps {
   isOpen: boolean;
@@ -584,7 +585,7 @@ export const ProductListingFormModal: React.FC<ProductListingFormModalProps> = (
     return errors.length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) {
       if (!name.trim()) {
@@ -595,9 +596,42 @@ export const ProductListingFormModal: React.FC<ProductListingFormModalProps> = (
       return;
     }
 
-    const cleanGallery = galleryImages.map((img) => img.trim()).filter(Boolean);
-    const primaryImg = cleanGallery[0] || image.trim() || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=800';
-    const secondaryImg = cleanGallery[1] || secondaryImage.trim() || undefined;
+    // Process gallery images and upload any raw base64 data URIs
+    const rawGallery = galleryImages.map((img) => img.trim()).filter(Boolean);
+    const sanitizedGallery: string[] = [];
+
+    for (let i = 0; i < rawGallery.length; i++) {
+      const img = rawGallery[i];
+      if (img.startsWith('data:')) {
+        try {
+          const uploadedUrl = await uploadProductImageServer(img, `${name.trim() || 'product'}_slot_${i + 1}`);
+          sanitizedGallery.push(uploadedUrl || img);
+        } catch {
+          sanitizedGallery.push(img);
+        }
+      } else {
+        sanitizedGallery.push(img);
+      }
+    }
+
+    let primaryImg = sanitizedGallery[0] || image.trim();
+    if (primaryImg.startsWith('data:')) {
+      try {
+        const uploadedHero = await uploadProductImageServer(primaryImg, `${name.trim() || 'product'}_hero`);
+        primaryImg = uploadedHero || primaryImg;
+      } catch {}
+    }
+    if (!primaryImg) {
+      primaryImg = 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=800';
+    }
+
+    let secondaryImg = sanitizedGallery[1] || secondaryImage.trim() || undefined;
+    if (secondaryImg && secondaryImg.startsWith('data:')) {
+      try {
+        const uploadedSec = await uploadProductImageServer(secondaryImg, `${name.trim() || 'product'}_sec`);
+        secondaryImg = uploadedSec || secondaryImg;
+      } catch {}
+    }
 
     const safeColors = colors.length > 0 ? colors : [
       { name: 'Onyx Black', hex: '#18181b' },
@@ -615,7 +649,7 @@ export const ProductListingFormModal: React.FC<ProductListingFormModalProps> = (
       reviewCount: initialProduct ? initialProduct.reviewCount : 1,
       image: primaryImg,
       secondaryImage: secondaryImg,
-      images: cleanGallery.length > 0 ? cleanGallery : [primaryImg],
+      images: sanitizedGallery.length > 0 ? sanitizedGallery : [primaryImg],
       videoUrl: videoUrl.trim() || undefined,
       colors: safeColors,
       sizes: sizes.length > 0 ? sizes : ['S', 'M', 'L', 'XL'],

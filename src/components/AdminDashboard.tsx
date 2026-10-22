@@ -610,10 +610,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsAddProductOpen(false);
     onAddProduct(created);
     try {
-      await Promise.allSettled([
-        createServerProduct(created),
-        upsertProductInDb(created),
-      ]);
+      const serverProduct = await createServerProduct(created);
+      const toSync = serverProduct || created;
+      if (serverProduct) {
+        onUpdateProduct(serverProduct);
+      }
+      upsertProductInDb(toSync).catch((err) => console.warn('Firestore add sync note:', err));
       const fresh = await fetchServerProducts();
       if (fresh && fresh.length > 0 && onRefreshProducts) {
         onRefreshProducts(fresh);
@@ -745,10 +747,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingProduct(null);
     onUpdateProduct(updated);
     try {
-      await Promise.allSettled([
-        updateServerProduct(updated),
-        upsertProductInDb(updated),
-      ]);
+      const serverProduct = await updateServerProduct(updated);
+      const toSync = serverProduct || updated;
+      if (serverProduct) {
+        onUpdateProduct(serverProduct);
+      }
+      upsertProductInDb(toSync).catch((err) => console.warn('Firestore update sync note:', err));
       const fresh = await fetchServerProducts();
       if (fresh && fresh.length > 0 && onRefreshProducts) {
         onRefreshProducts(fresh);

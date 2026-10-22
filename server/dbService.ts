@@ -24,6 +24,47 @@ import {
 } from '../src/types.ts';
 import { MOCK_PRODUCTS } from '../src/data/products.ts';
 import { DEFAULT_STORE_SETTINGS } from '../src/lib/firebase.ts';
+import fs from 'fs';
+import path from 'path';
+import { saveBase64Image, sanitizeProductImageUrls, sanitizeProduct } from './fileStorage.ts';
+
+const DATA_DIR = path.join(process.cwd(), 'server', 'data');
+const LOCAL_PRODUCTS_FILE = path.join(DATA_DIR, 'products_store.json');
+
+function ensureDataDir(): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.error('Failed to create server/data directory:', err);
+  }
+}
+
+function readLocalProducts(): Product[] {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(LOCAL_PRODUCTS_FILE)) {
+      const content = fs.readFileSync(LOCAL_PRODUCTS_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Error reading local products store:', err);
+  }
+  return MOCK_PRODUCTS;
+}
+
+function writeLocalProducts(productList: Product[]): void {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(LOCAL_PRODUCTS_FILE, JSON.stringify(productList, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error writing local products store:', err);
+  }
+}
 
 function formatDbProduct(p: any): Product {
   return {
@@ -102,56 +143,83 @@ export async function seedInitialProductsIfEmpty(): Promise<void> {
 // ================= PRODUCTS ================= //
 export async function getDbProducts(): Promise<Product[]> {
   try {
-    const rows = await db.select().from(products);
-    if (rows.length === 0) {
-      await seedInitialProductsIfEmpty();
-      const refetched = await db.select().from(products);
-      return refetched.map(formatDbProduct);
+    const rows = await Promise.race([
+      db.select().from(products),
+      new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2500))
+    ]);
+    if (rows && rows.length > 0) {
+      const formatted = rows.map(formatDbProduct);
+      writeLocalProducts(formatted);
+      return formatted;
     }
-    return rows.map(formatDbProduct);
+    // If table is empty, attempt seeding then fallback to local store
+    await seedInitialProductsIfEmpty();
+    const refetched = await db.select().from(products);
+    if (refetched && refetched.length > 0) {
+      const formatted = refetched.map(formatDbProduct);
+      writeLocalProducts(formatted);
+      return formatted;
+    }
+    return readLocalProducts();
   } catch (err) {
-    console.error('getDbProducts error:', err);
-    return MOCK_PRODUCTS;
+    // Fall back to persistent local storage so saved products are never lost
+    return readLocalProducts();
   }
 }
 
 export async function getDbProductById(id: string): Promise<Product | null> {
   try {
-    const rows = await db.select().from(products).where(eq(products.id, id));
-    return rows.length > 0 ? formatDbProduct(rows[0]) : null;
-  } catch (err) {
-    console.error('getDbProductById error:', err);
-    return null;
-  }
+    const rows = await Promise.race([
+      db.select().from(products).where(eq(products.id, id)),
+      new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000))
+    ]);
+    if (rows && rows.length > 0) {
+      return formatDbProduct(rows[0]);
+    }
+  } catch (err) {}
+  
+  const locals = readLocalProducts();
+  return locals.find((p) => p.id === id) || null;
 }
 
 export async function createDbProduct(data: Partial<Product>): Promise<Product> {
+  const sanitized = await sanitizeProduct(data);
   const newProduct: Product = {
-    id: data.id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    name: data.name || 'New Minimalist Product',
-    category: (data.category as any) || 'Apparel',
-    price: Number(data.price) || 99,
-    originalPrice: data.originalPrice ? Number(data.originalPrice) : undefined,
-    deliveryCharges: data.deliveryCharges !== undefined ? Number(data.deliveryCharges) : 0,
-    rating: data.rating || 5.0,
-    reviewCount: data.reviewCount || 1,
-    image: data.image || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=800',
-    secondaryImage: data.secondaryImage,
-    images: Array.isArray(data.images) && data.images.length > 0
-      ? data.images
-      : [data.image || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=800', ...(data.secondaryImage ? [data.secondaryImage] : [])].filter(Boolean),
-    videoUrl: data.videoUrl,
-    colors: data.colors && data.colors.length > 0 ? data.colors : [
+    id: sanitized.id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    name: sanitized.name || 'New Minimalist Product',
+    category: (sanitized.category as any) || 'Apparel',
+    price: Number(sanitized.price) || 99,
+    originalPrice: sanitized.originalPrice ? Number(sanitized.originalPrice) : undefined,
+    deliveryCharges: sanitized.deliveryCharges !== undefined ? Number(sanitized.deliveryCharges) : 0,
+    rating: sanitized.rating || 5.0,
+    reviewCount: sanitized.reviewCount || 1,
+    image: sanitized.image || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=800',
+    secondaryImage: sanitized.secondaryImage,
+    images: Array.isArray(sanitized.images) && sanitized.images.length > 0
+      ? sanitized.images
+      : [sanitized.image || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=800', ...(sanitized.secondaryImage ? [sanitized.secondaryImage] : [])].filter(Boolean) as string[],
+    videoUrl: sanitized.videoUrl,
+    colors: sanitized.colors && sanitized.colors.length > 0 ? sanitized.colors : [
       { name: 'Onyx Black', hex: '#18181b' },
       { name: 'Off-White', hex: '#fafaf9' }
     ],
-    description: data.description || 'Handcrafted minimalist essential designed for longevity.',
-    details: data.details || ['100% Sustainable Organic Textile', 'Machine wash cold'],
-    isNew: data.isNew ?? true,
-    inStock: (data.stockCount ?? 25) > 0,
-    stockCount: Number(data.stockCount ?? 25),
-    sku: data.sku || `AXE-${Math.floor(1000 + Math.random() * 9000)}`,
+    description: sanitized.description || 'Handcrafted minimalist essential designed for longevity.',
+    details: sanitized.details || ['100% Sustainable Organic Textile', 'Machine wash cold'],
+    isNew: sanitized.isNew ?? true,
+    inStock: (sanitized.stockCount ?? 25) > 0,
+    stockCount: Number(sanitized.stockCount ?? 25),
+    sku: sanitized.sku || `AXE-${Math.floor(1000 + Math.random() * 9000)}`,
   };
+
+  // Always update persistent local store
+  const localList = readLocalProducts();
+  const existingIdx = localList.findIndex((p) => p.id === newProduct.id);
+  if (existingIdx >= 0) {
+    localList[existingIdx] = newProduct;
+  } else {
+    localList.unshift(newProduct);
+  }
+  writeLocalProducts(localList);
 
   try {
     await db.insert(products).values({
@@ -204,56 +272,85 @@ export async function createDbProduct(data: Partial<Product>): Promise<Product> 
       }
     });
   } catch (err) {
-    console.error('createDbProduct error:', err);
+    console.warn('PostgreSQL write bypassed, successfully persisted locally:', err);
   }
 
   return newProduct;
 }
 
 export async function upsertDbProduct(data: Partial<Product>): Promise<Product> {
-  if (data.id) {
-    const existing = await getDbProductById(data.id);
+  const sanitized = await sanitizeProduct(data);
+  if (sanitized.id) {
+    const existing = await getDbProductById(sanitized.id);
     if (existing) {
-      const updated = await updateDbProduct(data.id, data);
+      const updated = await updateDbProduct(sanitized.id, sanitized);
       if (updated) return updated;
     }
   }
-  return await createDbProduct(data);
+  return await createDbProduct(sanitized);
 }
 
 export async function updateDbProduct(id: string, data: Partial<Product>): Promise<Product | null> {
   try {
+    const sanitized = await sanitizeProduct(data);
     const existing = await getDbProductById(id);
     if (!existing) {
-      return await createDbProduct({ ...data, id });
+      return await createDbProduct({ ...sanitized, id });
     }
 
-    const stockCount = data.stockCount !== undefined ? Number(data.stockCount) : existing.stockCount;
-    const inStock = data.inStock !== undefined ? data.inStock : stockCount > 0;
-    const deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges) : (existing.deliveryCharges ?? 0);
+    const stockCount = sanitized.stockCount !== undefined ? Number(sanitized.stockCount) : existing.stockCount;
+    const inStock = sanitized.inStock !== undefined ? sanitized.inStock : stockCount > 0;
+    const deliveryCharges = sanitized.deliveryCharges !== undefined ? Number(sanitized.deliveryCharges) : (existing.deliveryCharges ?? 0);
 
-    await db.update(products).set({
-      name: data.name !== undefined ? data.name : existing.name,
-      category: data.category !== undefined ? data.category : existing.category,
-      price: data.price !== undefined ? Number(data.price) : existing.price,
-      originalPrice: data.originalPrice !== undefined ? Number(data.originalPrice) : existing.originalPrice,
-      deliveryCharges,
-      image: data.image !== undefined ? data.image : existing.image,
-      secondaryImage: data.secondaryImage !== undefined ? data.secondaryImage : (existing.secondaryImage ?? null),
-      description: data.description !== undefined ? data.description : existing.description,
-      details: data.details !== undefined ? data.details : (existing.details ?? []),
-      isNew: data.isNew !== undefined ? Boolean(data.isNew) : existing.isNew,
-      isBestseller: data.isBestseller !== undefined ? Boolean(data.isBestseller) : existing.isBestseller,
+    const mergedProduct: Product = {
+      ...existing,
+      ...sanitized,
+      id,
       stockCount,
       inStock,
-      sku: data.sku !== undefined ? data.sku : existing.sku,
-      colors: data.colors !== undefined ? data.colors : existing.colors,
-      sizes: data.sizes !== undefined ? data.sizes : existing.sizes,
-      images: data.images !== undefined ? data.images : (existing.images ?? []),
-      videoUrl: data.videoUrl !== undefined ? data.videoUrl : (existing.videoUrl ?? null),
-    }).where(eq(products.id, id));
+      deliveryCharges,
+      image: sanitized.image !== undefined ? sanitized.image : existing.image,
+      secondaryImage: sanitized.secondaryImage !== undefined ? sanitized.secondaryImage : existing.secondaryImage,
+      images: sanitized.images !== undefined ? sanitized.images : existing.images,
+    };
 
-    return await getDbProductById(id);
+    // Update local persistent store
+    const localList = readLocalProducts();
+    const idx = localList.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      localList[idx] = mergedProduct;
+    } else {
+      localList.unshift(mergedProduct);
+    }
+    writeLocalProducts(localList);
+
+    // Update PostgreSQL
+    try {
+      await db.update(products).set({
+        name: mergedProduct.name,
+        category: mergedProduct.category,
+        price: mergedProduct.price,
+        originalPrice: mergedProduct.originalPrice ?? null,
+        deliveryCharges,
+        image: mergedProduct.image,
+        secondaryImage: mergedProduct.secondaryImage ?? null,
+        description: mergedProduct.description,
+        details: mergedProduct.details ?? [],
+        isNew: Boolean(mergedProduct.isNew),
+        isBestseller: Boolean(mergedProduct.isBestseller),
+        stockCount,
+        inStock,
+        sku: mergedProduct.sku,
+        colors: mergedProduct.colors,
+        sizes: mergedProduct.sizes ?? [],
+        images: mergedProduct.images ?? [],
+        videoUrl: mergedProduct.videoUrl ?? null,
+      }).where(eq(products.id, id));
+    } catch (err) {
+      console.warn('PostgreSQL update bypassed, saved locally:', err);
+    }
+
+    return mergedProduct;
   } catch (err) {
     console.error('updateDbProduct error:', err);
     return null;
@@ -261,12 +358,17 @@ export async function updateDbProduct(id: string, data: Partial<Product>): Promi
 }
 
 export async function deleteDbProduct(id: string): Promise<boolean> {
+  // Remove from local persistent store
+  const localList = readLocalProducts();
+  const filtered = localList.filter((p) => p.id !== id);
+  writeLocalProducts(filtered);
+
   try {
     await db.delete(products).where(eq(products.id, id));
     return true;
   } catch (err) {
-    console.error('deleteDbProduct error:', err);
-    return false;
+    console.warn('PostgreSQL delete bypassed, removed locally:', err);
+    return true;
   }
 }
 
